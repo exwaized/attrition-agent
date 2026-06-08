@@ -1,0 +1,12 @@
+.env
+venv/
+__pycache__/
+*.pkl
+*.db
+logs/
+models/shap_summary.png
+models/km_curves.png
+rag/chroma/
+data/synthetic/employees.csv
+data/synthetic/features.csv
+data/synthetic/scored_employees.csv

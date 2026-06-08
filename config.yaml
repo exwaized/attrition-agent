@@ -1,0 +1,44 @@
+# ============================================================
+# config.yaml — Single source of truth for all project settings
+# Change values here only — no hardcoded values anywhere in code
+# ============================================================
+
+project:
+  name: attrition-agent
+  version: "1.0"
+
+data:
+  n_employees: 1800          # synthetic dataset size
+  attrition_rate: 0.18       # ~18% base attrition — realistic for telecom
+  random_seed: 42            # fixed seed so data is reproducible across runs
+  output_path: data/synthetic/employees.csv
+
+model:
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    eval_metric: aucpr        # PR-AUC not ROC-AUC — correct for imbalanced data
+  cox_ph:
+    penalizer: 0.1            # L2 regularization to prevent overfitting
+  threshold: 0.40             # tuned lower than 0.5 to maximize recall
+
+llm:
+  provider: groq              # groq for colab, ollama for local with real data
+  model: llama-3.3-70b-versatile
+  temperature: 0.3            # low temp = consistent structured outputs
+
+ev_framework:
+  replacement_cost: 450000    # Rs 4.5L per Band 4 employee replacement
+  intervention_cost: 50000    # Rs 50K retention intervention
+  high_risk_threshold: 200000 # EV > Rs 2L = immediate Slack alert
+  medium_risk_threshold: 50000
+
+slack:
+  webhook_url: ""             # paste webhook URL here when ready
+
+paths:
+  models: models/
+  logs: logs/
+  audit_db: logs/audit.db
+  chroma_db: rag/chroma/

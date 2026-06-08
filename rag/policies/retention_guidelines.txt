@@ -1,0 +1,40 @@
+This is the employee retention guidelines and Market Alignment Program policy for Jio Platforms HR.
+
+RETENTION GUIDELINES AND MARKET ALIGNMENT PROGRAM
+
+Section 1 - Market Alignment Program (MAP)
+Employees with a compa-ratio below 0.85 are eligible for an off-cycle salary correction under the Market Alignment Program.
+The compa-ratio is calculated as the employee's actual salary divided by the market midpoint for their band, department, and circle tier.
+Manager must raise a MAP request with approved budget codes within the current quarter for eligible employees.
+MAP corrections are processed within 30 days of request approval.
+Maximum MAP correction in a single cycle is 25 percent of current base salary.
+Employees who received a MAP correction are not eligible for another MAP correction within 12 months.
+
+Section 2 - Retention Bonus Program
+Employees classified as High or Critical attrition risk and rated 3.5 or above are eligible for a spot retention bonus.
+Spot bonus range: Rs 15000 to Rs 75000 depending on band and risk severity.
+Band 3 and 4: Rs 15000 to Rs 30000
+Band 5: Rs 30000 to Rs 50000
+Band 6 and above: Rs 50000 to Rs 75000
+Manager must submit retention bonus request with HRBP co-approval.
+Retention bonus is paid immediately upon approval and does not affect annual bonus calculation.
+
+Section 3 - Critical Attrition Risk Protocol
+Employees with attrition probability above 0.70 as assessed by the HR analytics system are classified as Critical Attrition Risk.
+Manager must be notified within 24 hours of Critical classification.
+Manager must conduct a 1-on-1 retention conversation within 5 working days.
+HRBP must be looped in within 7 days.
+A retention action plan must be documented and filed within 14 days.
+Progress review must occur at 30 days and 60 days.
+
+Section 4 - Peer Contagion Protocol
+When 3 or more employees from the same team leave within any 90 day period, a Contagion Risk Assessment is triggered.
+HRBP must assess remaining team members within 10 days.
+All remaining team members with tenure under 24 months in the affected team are automatically elevated to Medium risk.
+Skip-level manager must hold a team town hall within 14 days.
+Hiring to backfill must begin within 21 days to prevent further morale deterioration.
+
+Section 5 - Post-Appraisal Retention Window
+The 60 day period following appraisal result communication is the highest voluntary resignation window.
+Employees who received below-median hike and have a performance rating of 3.5 or above must be proactively engaged by their manager within 14 days of appraisal results.
+HRBP must review all resignation submissions received within 60 days of appraisal for systemic patterns.

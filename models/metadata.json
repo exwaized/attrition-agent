@@ -1,0 +1,11 @@
+{
+  "champion": "LogisticRegression",
+  "pr_auc": 0.9864,
+  "roc_auc": 0.9932,
+  "threshold": 0.4,
+  "feature_count": 46,
+  "train_size": 1440,
+  "test_size": 360,
+  "pr_auc_gap": -0.0133,
+  "scaled": true
+}
