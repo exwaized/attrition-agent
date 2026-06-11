@@ -6,10 +6,6 @@
 #       intervention_generator → router → Slack/digest/log
 # CONNECTED TO: ev_scoring.py (input) → api/main.py (called by)
 # ============================================================
-# ⚠️  OPUS 4.8 NEEDED: LangGraph StateGraph wiring + prompt
-#     engineering for structured JSON LLM output is complex.
-#     Use Opus if node chaining breaks or LLM output malformed.
-# ============================================================
 
 import json
 import pickle
@@ -20,11 +16,13 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from typing import TypedDict, Optional
-from groq import Groq
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path("E:/attrition-agent/.env"), override=True)
+import os
 
+from groq import Groq
 from langgraph.graph import StateGraph, END
 
-# Import RAG retriever
 import sys
 sys.path.append(".")
 from rag.retriever import retrieve_for_employee
@@ -33,61 +31,48 @@ from rag.retriever import retrieve_for_employee
 with open("config.yaml") as f:
     cfg = yaml.safe_load(f)
 
-# Load Groq client
-# Groq for Colab (fast, free tier sufficient for 1800 employees in batches)
-# Switch to Ollama for real Jio data (privacy)
-import os
-from dotenv import load_dotenv
-load_dotenv()  # loads .env file from project root
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+print(f"Groq key loaded: {os.environ.get('GROQ_API_KEY')[:20]}...")
 
 feature_cols = Path("data/synthetic/feature_cols.txt").read_text().strip().split("\n")
 
 # --- Step 2: Define LangGraph State ---
-# State = shared memory across all nodes in the graph
+# State = shared memory across all nodes
 # Each node reads from and writes to this state dict
-# TypedDict enforces schema — prevents silent key errors
 class AttritionState(TypedDict):
-    employee_id:          str
-    employee_data:        dict          # raw employee record
-    p_attrition:          float         # from ev_scoring
-    median_survival_months: float       # from Cox PH
-    ev:                   float         # expected value
-    risk_tier:            str           # CRITICAL/HIGH/MEDIUM/LOW
-    shap_drivers:         list          # top 3 SHAP features
-    policy_context:       str           # RAG retrieved chunks
-    llm_recommendation:   str           # Ollama/Groq output
-    routed_to:            str           # where alert was sent
-    error:                Optional[str] # catches node failures
+    employee_id:            str
+    employee_data:          dict
+    p_attrition:            float
+    median_survival_months: float
+    ev:                     float
+    risk_tier:              str
+    shap_drivers:           list
+    policy_context:         str
+    llm_recommendation:     str
+    routed_to:              str
+    error:                  Optional[str]
 
 # ============================================================
 # NODE 1: risk_scorer
 # ============================================================
-# Reads pre-computed scores from ev_scoring.py
-# Could re-score in real-time for single employee lookups
-# Batch scoring done offline for efficiency
+# Loads pre-computed scores from ev_scoring.py
+# Reads scored_employees.csv — batch scored offline
 # ============================================================
 def risk_scorer(state: AttritionState) -> AttritionState:
-    """
-    Loads pre-computed risk scores for this employee.
-    In production: could call model.predict_proba() in real-time.
-    For batch: reads from scored_employees.csv (pre-computed).
-    """
     try:
         scored_df = pd.read_csv("data/synthetic/scored_employees.csv")
         emp_row   = scored_df[scored_df["employee_id"] == state["employee_id"]]
 
         if emp_row.empty:
-            state["error"] = f"Employee {state['employee_id']} not found in scored data"
+            state["error"] = f"Employee {state['employee_id']} not found"
             return state
 
         emp = emp_row.iloc[0].to_dict()
-
-        state["p_attrition"]           = float(emp["p_attrition"])
+        state["p_attrition"]            = float(emp["p_attrition"])
         state["median_survival_months"] = float(emp["median_survival_months"])
-        state["ev"]                    = float(emp["ev"])
-        state["risk_tier"]             = emp["risk_tier"]
-        state["employee_data"]         = emp
+        state["ev"]                     = float(emp["ev"])
+        state["risk_tier"]              = emp["risk_tier"]
+        state["employee_data"]          = emp
 
     except Exception as e:
         state["error"] = f"risk_scorer error: {str(e)}"
@@ -98,37 +83,34 @@ def risk_scorer(state: AttritionState) -> AttritionState:
 # NODE 2: shap_explainer
 # ============================================================
 # Parses pre-computed SHAP values for this employee
-# Formats top 3 drivers for LLM context
-# SHAP values already computed in ev_scoring.py
+# Translates feature names into HR-readable descriptions
+# These become the 'why' in the LLM recommendation
 # ============================================================
 def shap_explainer(state: AttritionState) -> AttritionState:
-    """
-    Extracts and formats top SHAP drivers for LLM prompt.
-    Translates feature names into HR-readable descriptions.
-    These become the 'why' in the intervention recommendation.
-    """
     if state.get("error"):
         return state
 
     try:
         raw_drivers = json.loads(state["employee_data"]["top_shap_drivers"])
 
-        # Translate feature names to HR-readable descriptions
-        # LLM understands "high performer stuck" better than "interact_high_performer_no_promo"
         FEATURE_LABELS = {
-            "interact_high_performer_no_promo":     "High performer with no promotion in 18+ months",
-            "interact_underpaid_declining":          "Underpaid vs market AND activity declining",
-            "interact_new_mgr_peer_left":            "New manager + peers recently left (contagion risk)",
-            "interact_post_appraisal_dissatisfied":  "Received below-median hike in recent appraisal",
-            "comp_compa_ratio":                      "Salary below market benchmark",
-            "comp_underpaid_flag":                   "Significantly underpaid vs peers",
-            "org_peer_attrition":                    "Multiple peers left team recently",
-            "org_manager_attrition":                 "High manager turnover in team",
-            "org_team_shrink":                       "Team headcount reduced >10%",
-            "trend_login":                           "Login activity declining sharply",
-            "trend_performance":                     "Performance rating declining",
-            "career_tenure_at_band":                 "Stuck at same band for extended period",
-            "recency_promotion":                     "Long gap since last promotion",
+            "interact_high_performer_no_promo":    "High performer with no promotion in 18+ months",
+            "interact_underpaid_declining":         "Underpaid vs market AND activity declining",
+            "interact_new_mgr_peer_left":           "New manager + peers recently left (contagion risk)",
+            "interact_post_appraisal_dissatisfied": "Received below-median hike in recent appraisal",
+            "comp_compa_ratio":                     "Salary below market benchmark",
+            "comp_underpaid_flag":                  "Significantly underpaid vs peers",
+            "org_peer_attrition":                   "Multiple peers left team recently",
+            "org_manager_attrition":                "High manager turnover in team",
+            "org_team_shrink":                      "Team headcount reduced >10%",
+            "trend_login":                          "Login activity declining sharply",
+            "trend_performance":                    "Performance rating declining",
+            "career_tenure_at_band":                "Stuck at same band for extended period",
+            "recency_promotion":                    "Long gap since last promotion",
+            "recency_hike":                         "Long gap since last salary hike",
+            "recency_manager_change":               "Recent manager change — destabilisation risk",
+            "volatility_leave":                     "Unusual leave pattern vs tenure",
+            "volatility_performance":               "Erratic performance ratings",
         }
 
         formatted_drivers = []
@@ -153,69 +135,93 @@ def shap_explainer(state: AttritionState) -> AttritionState:
 # NODE 3: intervention_generator
 # ============================================================
 # RAG retrieves relevant policy context
-# Groq/Ollama generates specific HR recommendation
-# Output is structured JSON: narrative + actions + timeline
-# ============================================================
-# ⚠️ OPUS 4.8 NEEDED: Prompt engineering for consistent
-#    structured JSON output with policy grounding is high-reasoning.
-#    If Groq output is malformed JSON, switch to Opus via API.
+# Groq generates specific HR recommendation
+# Updated prompt fixes survival months misinterpretation
 # ============================================================
 def intervention_generator(state: AttritionState) -> AttritionState:
-    """
-    Generates plain-English HR recommendation using:
-    1. Employee context (band, tenure, circle, performance)
-    2. SHAP drivers (why they're at risk)
-    3. RAG policy context (what policy says to do)
-    Output: specific, actionable, policy-grounded recommendation.
-    """
     if state.get("error"):
         return state
 
     try:
         # Step 3a: RAG retrieval
-        policy_context = retrieve_for_employee(state["employee_data"])
+        policy_context         = retrieve_for_employee(state["employee_data"])
         state["policy_context"] = policy_context
 
         # Step 3b: Build LLM prompt
-        emp   = state["employee_data"]
+        emp          = state["employee_data"]
         drivers_text = "\n".join([
-            f"- {d['label']} (SHAP impact: {d['shap']:+.3f})"
+            f"- {d['label']} (SHAP impact: {d['shap']:+.3f}) — {d['direction']}"
             for d in state["shap_drivers"]
         ])
 
         prompt = f"""You are an expert HR retention analyst at Jio Platforms.
+Your job is to generate a precise, actionable retention recommendation
+based on ML model outputs. Read the following carefully before generating.
+
+IMPORTANT — HOW TO INTERPRET MODEL OUTPUTS:
+- P(attrition): probability employee leaves within 90 days based on
+  current behavioural signals. >0.70 = urgent. This is your PRIMARY
+  urgency signal.
+- Cox PH median survival months: population-level estimate of how long
+  employees with SIMILAR HISTORICAL PROFILES typically stay. This is NOT
+  a countdown timer. A high survival months with high P(attrition) means
+  the employee is deviating from their historical pattern — that deviation
+  IS the risk signal.
+- EV (Expected Value): rupee value of intervening. Higher = more budget
+  justified.
+- SHAP drivers: specific features driving THIS employee's risk score.
+  Positive SHAP = pushing toward leaving. These are your intervention targets.
 
 EMPLOYEE PROFILE:
 - Employee ID: {emp['employee_id']}
 - Band: {emp['band']} | Department: {emp['department']} | Circle: {emp['circle']}
 - Tenure: {emp['tenure_months']} months
 - Performance Rating: {emp['perf_rating_current']}/5.0
-- Compa-Ratio: {emp['compa_ratio']} (1.0 = market rate)
+- Compa-Ratio: {emp['compa_ratio']} (1.0 = market rate, <0.85 = significantly underpaid)
 - Months since promotion: {emp['months_since_promotion']}
 - Risk Profile: {emp['risk_profile']}
 
 ATTRITION RISK SCORES:
-- P(attrition): {state['p_attrition']:.3f} ({state['risk_tier']} risk)
-- Predicted months remaining: {state['median_survival_months']:.1f}
+- P(attrition): {state['p_attrition']:.3f} — {'URGENT action needed' if state['p_attrition'] > 0.70 else 'Monitor closely'}
+- Cox PH survival estimate: {state['median_survival_months']:.1f} months
+  (population median for similar profiles — use only to contextualise urgency,
+   NOT as remaining time. Never say X months remaining before exit.)
 - Expected Value of intervention: Rs {state['ev']:,.0f}
+- Risk tier: {state['risk_tier']}
 
-TOP RISK DRIVERS (from ML model):
+TOP RISK DRIVERS (from ML model — these are your intervention targets):
 {drivers_text}
 
 RELEVANT HR POLICY:
 {policy_context}
 
+INSTRUCTIONS FOR YOUR RESPONSE:
+1. Lead with the specific behavioural reason this employee is at risk
+   based on SHAP drivers — not generic statements
+2. Reference their actual numbers (compa-ratio, rating, tenure, months
+   since promotion) in your narrative
+3. Recommend specific policy-grounded actions with rupee amounts where relevant
+4. If P(attrition) is high but survival months is also high — acknowledge
+   this means current behaviour is deviating from their historical pattern
+5. Calibrate urgency to P(attrition):
+   P>0.85 = immediate this week
+   P=0.65-0.85 = action within 2 weeks
+   P<0.65 = action this month
+6. NEVER say "X months remaining before exit" — survival months is not a countdown
+
 Generate a retention recommendation as a JSON object with exactly these fields:
 {{
-  "narrative": "2-3 sentence plain English explanation of why this employee is at risk",
-  "immediate_actions": ["action 1", "action 2", "action 3"],
-  "timeline": "specific timeline for each action",
-  "policy_references": ["relevant policy section 1", "relevant policy section 2"],
-  "intervention_window": "how many weeks before risk becomes irreversible"
+  "narrative": "2-3 sentences specific to THIS employee's actual numbers and drivers",
+  "immediate_actions": ["specific action 1 with rupee amount if relevant",
+                        "specific action 2 with timeline",
+                        "specific action 3"],
+  "timeline": "specific timeline for each action based on urgency tier",
+  "policy_references": ["exact policy section name 1", "exact policy section name 2"],
+  "intervention_window": "specific number of weeks based on P(attrition) level"
 }}
 
-Be specific. Reference exact policy clauses. Give concrete rupee amounts where relevant.
-Return ONLY the JSON object, no other text."""
+Be specific. Use the employee's actual numbers. Reference exact policy clauses.
+Return ONLY the JSON object, no other text, no markdown fences."""
 
         # Step 3c: Call Groq
         response = groq_client.chat.completions.create(
@@ -227,23 +233,22 @@ Return ONLY the JSON object, no other text."""
 
         raw_output = response.choices[0].message.content.strip()
 
-        # Step 3d: Parse JSON output
-        # Strip markdown fences if Groq adds them
+        # Step 3d: Parse JSON — strip markdown fences if present
         if "```json" in raw_output:
             raw_output = raw_output.split("```json")[1].split("```")[0].strip()
         elif "```" in raw_output:
             raw_output = raw_output.split("```")[1].split("```")[0].strip()
 
-        recommendation = json.loads(raw_output)
+        recommendation             = json.loads(raw_output)
         state["llm_recommendation"] = json.dumps(recommendation, indent=2)
 
-    except json.JSONDecodeError as e:
-        # If JSON parsing fails — store raw text, don't crash agent
+    except json.JSONDecodeError:
+        # Store raw text if JSON parsing fails — don't crash agent
         state["llm_recommendation"] = json.dumps({
-            "narrative": raw_output,
-            "immediate_actions": ["Review manually — LLM output parse error"],
-            "timeline": "ASAP",
-            "policy_references": [],
+            "narrative":        raw_output,
+            "immediate_actions":["Review manually — LLM output parse error"],
+            "timeline":         "ASAP",
+            "policy_references":[],
             "intervention_window": "Unknown"
         })
     except Exception as e:
@@ -254,18 +259,11 @@ Return ONLY the JSON object, no other text."""
 # ============================================================
 # NODE 4: router
 # ============================================================
-# Conditional edge — routes based on risk_tier
-# CRITICAL → Slack alert immediately
-# HIGH     → weekly digest queue
-# MEDIUM   → log only, manager awareness
-# LOW      → audit log, no action
+# Routes based on risk_tier
+# CRITICAL → Slack, HIGH → digest, MEDIUM → log, LOW → log
+# All decisions logged to SQLite audit trail
 # ============================================================
 def router(state: AttritionState) -> AttritionState:
-    """
-    Routes output based on risk tier.
-    All decisions logged to SQLite audit trail — full auditability.
-    Slack fires for CRITICAL only — prevents alert fatigue.
-    """
     if state.get("error"):
         log_to_audit(state, "ERROR")
         state["routed_to"] = "ERROR_LOG"
@@ -291,10 +289,6 @@ def router(state: AttritionState) -> AttritionState:
 # HELPER: Slack alert
 # ============================================================
 def send_slack_alert(state: AttritionState):
-    """
-    Sends formatted Slack message for CRITICAL risk employees.
-    If webhook not configured, prints to console (dev mode).
-    """
     webhook_url = cfg["slack"]["webhook_url"]
     emp         = state["employee_data"]
 
@@ -304,27 +298,25 @@ def send_slack_alert(state: AttritionState):
         rec = {"narrative": state["llm_recommendation"], "immediate_actions": []}
 
     message = {
-        "text": f"🚨 *CRITICAL ATTRITION ALERT — {emp['employee_id']}*",
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*{emp['employee_id']}* | Band {emp['band']} | "
-                        f"{emp['department']} | {emp['circle']}\n"
-                        f"P(attrition): *{state['p_attrition']:.2f}* | "
-                        f"EV: *Rs {state['ev']:,.0f}* | "
-                        f"Survival: *{state['median_survival_months']:.1f} months*\n\n"
-                        f"*Why at risk:*\n" +
-                        "\n".join([f"• {d['label']}" for d in state["shap_drivers"]]) +
-                        f"\n\n*Recommendation:*\n{rec.get('narrative', 'See full report')}\n\n"
-                        f"*Immediate actions:*\n" +
-                        "\n".join([f"{i+1}. {a}" for i, a in enumerate(rec.get('immediate_actions', []))])
-                    )
-                }
+        "text": f"CRITICAL ATTRITION ALERT — {emp['employee_id']}",
+        "blocks": [{
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{emp['employee_id']}* | Band {emp['band']} | "
+                    f"{emp['department']} | {emp['circle']}\n"
+                    f"P(attrition): *{state['p_attrition']:.2f}* | "
+                    f"EV: *Rs {state['ev']:,.0f}*\n\n"
+                    f"*Why at risk:*\n" +
+                    "\n".join([f"• {d['label']}" for d in state["shap_drivers"]]) +
+                    f"\n\n*Recommendation:*\n{rec.get('narrative', 'See full report')}\n\n"
+                    f"*Immediate actions:*\n" +
+                    "\n".join([f"{i+1}. {a}" for i, a in
+                               enumerate(rec.get('immediate_actions', []))])
+                )
             }
-        ]
+        }]
     }
 
     if webhook_url:
@@ -335,9 +327,8 @@ def send_slack_alert(state: AttritionState):
             headers={"Content-Type": "application/json"}
         )
         urllib.request.urlopen(req)
-        print(f"✅ Slack alert sent for {emp['employee_id']}")
+        print(f"Slack alert sent for {emp['employee_id']}")
     else:
-        # Dev mode — print to console
         print(f"\n{'='*50}")
         print(f"[SLACK ALERT — DEV MODE] {emp['employee_id']}")
         print(f"P(attrition): {state['p_attrition']:.3f} | EV: Rs {state['ev']:,.0f}")
@@ -346,37 +337,29 @@ def send_slack_alert(state: AttritionState):
         print(f"{'='*50}\n")
 
 # ============================================================
-# HELPER: Weekly digest queue
+# HELPER: Weekly digest
 # ============================================================
 def add_to_weekly_digest(state: AttritionState):
-    """Appends HIGH risk employees to weekly digest JSON file."""
     digest_path = Path("logs/weekly_digest.json")
-
     try:
         existing = json.loads(digest_path.read_text()) if digest_path.exists() else []
     except:
         existing = []
 
     existing.append({
-        "employee_id":   state["employee_id"],
-        "risk_tier":     state["risk_tier"],
-        "p_attrition":   state["p_attrition"],
-        "ev":            state["ev"],
-        "added_at":      datetime.now().isoformat(),
+        "employee_id":    state["employee_id"],
+        "risk_tier":      state["risk_tier"],
+        "p_attrition":    state["p_attrition"],
+        "ev":             state["ev"],
+        "added_at":       datetime.now().isoformat(),
         "recommendation": state["llm_recommendation"]
     })
-
     digest_path.write_text(json.dumps(existing, indent=2))
 
 # ============================================================
 # HELPER: SQLite audit log
 # ============================================================
 def log_to_audit(state: AttritionState, tier: str):
-    """
-    Logs every agent run to SQLite — full auditability.
-    Every score, recommendation, routing decision timestamped.
-    Required for HR compliance — who was alerted, when, why.
-    """
     db_path = cfg["paths"]["audit_db"]
     Path("logs").mkdir(exist_ok=True)
     conn = sqlite3.connect(db_path)
@@ -395,7 +378,8 @@ def log_to_audit(state: AttritionState, tier: str):
     """)
     conn.execute("""
         INSERT INTO audit_log
-        (employee_id, p_attrition, ev, risk_tier, routed_to, recommendation, error, created_at)
+        (employee_id, p_attrition, ev, risk_tier, routed_to,
+         recommendation, error, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         state["employee_id"],
@@ -411,26 +395,16 @@ def log_to_audit(state: AttritionState, tier: str):
     conn.close()
 
 # ============================================================
-# Step 3: Build LangGraph StateGraph
-# ============================================================
-# Nodes connected in sequence with conditional edge at router
-# State flows through each node — each adds its output to state
+# Build LangGraph StateGraph
 # ============================================================
 def build_agent():
-    """
-    Builds and compiles the LangGraph StateGraph.
-    Returns compiled graph ready for .invoke() calls.
-    """
     graph = StateGraph(AttritionState)
 
-    # Add all 4 nodes
-    graph.add_node("risk_scorer",           risk_scorer)
-    graph.add_node("shap_explainer",        shap_explainer)
-    graph.add_node("intervention_generator",intervention_generator)
-    graph.add_node("router",                router)
+    graph.add_node("risk_scorer",            risk_scorer)
+    graph.add_node("shap_explainer",         shap_explainer)
+    graph.add_node("intervention_generator", intervention_generator)
+    graph.add_node("router",                 router)
 
-    # Wire nodes sequentially
-    # State passes through each node in order
     graph.set_entry_point("risk_scorer")
     graph.add_edge("risk_scorer",            "shap_explainer")
     graph.add_edge("shap_explainer",         "intervention_generator")
@@ -439,17 +413,12 @@ def build_agent():
 
     return graph.compile()
 
-# Compile once at module level — reused across all API calls
 agent = build_agent()
 
 # ============================================================
-# Step 4: Run agent on one employee
+# Run agent on one employee
 # ============================================================
 def run_agent(employee_id: str) -> dict:
-    """
-    Runs full 4-node pipeline for one employee.
-    Returns final state with all scores + recommendation.
-    """
     initial_state = AttritionState(
         employee_id=employee_id,
         employee_data={},
@@ -463,25 +432,16 @@ def run_agent(employee_id: str) -> dict:
         routed_to="",
         error=None
     )
-
-    final_state = agent.invoke(initial_state)
-    return final_state
+    return agent.invoke(initial_state)
 
 # ============================================================
-# Step 5: Batch run — process all employees
+# Batch run
 # ============================================================
 def run_batch(limit: int = None, tiers: list = None) -> list:
-    """
-    Runs agent on multiple employees.
-    limit: max employees to process (None = all)
-    tiers: filter by risk tier e.g. ["CRITICAL", "HIGH"]
-    Returns list of final states.
-    """
     scored_df = pd.read_csv("data/synthetic/scored_employees.csv")
 
     if tiers:
         scored_df = scored_df[scored_df["risk_tier"].isin(tiers)]
-
     if limit:
         scored_df = scored_df.head(limit)
 
@@ -493,14 +453,11 @@ def run_batch(limit: int = None, tiers: list = None) -> list:
         try:
             result = run_agent(emp_id)
             results.append(result)
-            tier = result.get("risk_tier", "?")
-            routed = result.get("routed_to", "?")
-            print(f"  [{i+1}/{len(scored_df)}] {emp_id} | {tier} | → {routed}")
+            print(f"  [{i+1}] {emp_id} | {result.get('risk_tier')} | → {result.get('routed_to')}")
         except Exception as e:
             print(f"  [{i+1}] {emp_id} | ERROR: {str(e)}")
 
     return results
-
 
 # --- Quick test when run directly ---
 if __name__ == "__main__":

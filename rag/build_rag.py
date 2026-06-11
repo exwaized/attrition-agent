@@ -112,7 +112,7 @@ collection.add(
     metadatas=all_metas
 )
 
-print(f"\n✅ RAG built successfully")
+print(f"\n[OK] RAG built successfully")
 print(f"Collection: hr_policies")
 print(f"Total chunks stored: {collection.count()}")
 
@@ -137,4 +137,4 @@ for query in test_queries:
         print(f"  Source: {meta['source']} | Chunk: {meta['chunk_idx']}")
         print(f"  Text: {doc[:120]}...")
 
-print("\n✅ RAG retrieval working correctly")
+print("\n[OK] RAG retrieval working correctly")

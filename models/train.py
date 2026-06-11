@@ -121,14 +121,14 @@ if pr_gap > 0.02:
     champion_proba = xgb_metrics["proba"]
     X_train_champ  = X_train
     X_test_champ   = X_test
-    print(f"✅ Champion: XGBoost")
+    print(f"[OK] Champion: XGBoost")
 else:
     champion       = lr
     champion_name  = "LogisticRegression"
     champion_proba = lr_metrics["proba"]
     X_train_champ  = X_train_sc
     X_test_champ   = X_test_sc
-    print(f"✅ Champion: LogisticRegression")
+    print(f"[OK] Champion: LogisticRegression")
 
 # --- Step 8: SHAP values ---
 # SHAP = why model made each prediction
@@ -188,8 +188,10 @@ print(f"\nFitting KM curves...")
 kmf = KaplanMeierFitter()
 fig, ax = plt.subplots(figsize=(10, 6))
 
-high_risk = train_df["risk_profile"].isin(["high_performer_stuck", "disengaged_declining"])
-low_risk  = train_df["risk_profile"].isin(["stable_tenured"])
+# risk_profile dropped from features.csv — use attrition_flag as proxy
+# High risk = attrition_flag=1, Low risk = attrition_flag=0
+high_risk = train_df["attrition_flag"] == 1
+low_risk  = train_df["attrition_flag"] == 0
 
 kmf.fit(train_df.loc[high_risk, "tenure_months"], train_df.loc[high_risk, "attrition_flag"], label="High Risk")
 kmf.plot_survival_function(ax=ax, ci_show=True)
@@ -232,7 +234,7 @@ metadata = {
 with open("models/metadata.json", "w") as f: json.dump(metadata, f, indent=2)
 
 print(f"\n{'='*40}")
-print(f"✅ Training complete")
+print(f"[OK] Training complete")
 print(f"Champion:  {champion_name}")
 print(f"PR-AUC:    {metadata['pr_auc']}")
 print(f"ROC-AUC:   {metadata['roc_auc']}")

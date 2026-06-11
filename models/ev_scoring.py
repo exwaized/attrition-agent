@@ -121,7 +121,7 @@ scored = df[["employee_id", "p_attrition", "median_survival_months",
 scored = scored.merge(
     raw_df[["employee_id", "band", "circle", "department", "gender",
             "tenure_months", "compa_ratio", "perf_rating_current",
-            "months_since_promotion", "months_since_hike", "risk_profile"]],
+            "months_since_promotion", "months_since_hike"]],
     on="employee_id", how="left"
 )
 
@@ -134,7 +134,7 @@ scored.to_csv(output_path, index=False)
 
 # --- Step 9: Summary stats ---
 tier_counts = scored["risk_tier"].value_counts()
-print(f"\n✅ Scoring complete — {len(scored)} employees")
+print(f"\n[OK] Scoring complete — {len(scored)} employees")
 print(f"\nRisk tier distribution:")
 for tier in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
     count = tier_counts.get(tier, 0)
