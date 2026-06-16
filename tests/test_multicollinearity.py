@@ -13,10 +13,9 @@ import pandas as pd
 
 from models.multicollinearity_check import (
     find_high_correlation_pairs,
-    select_correlated_feature_to_drop,
     recommend_drops,
+    select_correlated_feature_to_drop,
 )
-
 
 # ---------- find_high_correlation_pairs ----------
 

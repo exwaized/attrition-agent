@@ -12,8 +12,7 @@ import json
 import pandas as pd
 import pytest
 
-from models.ev_scoring import compute_ev, assign_risk_tier, get_top_shap_drivers
-
+from models.ev_scoring import assign_risk_tier, compute_ev, get_top_shap_drivers
 
 # ---------- compute_ev ----------
 

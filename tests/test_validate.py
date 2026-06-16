@@ -15,24 +15,22 @@ df/feature_cols as explicit arguments and are tested directly with
 small synthetic DataFrames.
 """
 import pandas as pd
-import pytest
 
 from data.raw.validate import (
-    check_file_exists,
-    check_feature_cols_exists,
-    check_row_count,
     check_all_features_present,
-    check_no_nulls,
     check_attrition_flag,
-    check_employee_id_unique,
     check_class_balance,
+    check_dummy_variables,
+    check_employee_id_unique,
+    check_feature_cols_exists,
     check_feature_ranges,
     check_feature_variance,
-    check_train_test_split,
+    check_file_exists,
     check_interaction_terms,
-    check_dummy_variables,
+    check_no_nulls,
+    check_row_count,
+    check_train_test_split,
 )
-
 
 # ---------- filesystem checks ----------
 

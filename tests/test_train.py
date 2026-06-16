@@ -17,8 +17,7 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import LogisticRegression
 
-from models.train import temporal_split, evaluate_model, select_champion
-
+from models.train import evaluate_model, select_champion, temporal_split
 
 # ---------- temporal_split ----------
 

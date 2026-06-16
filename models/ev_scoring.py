@@ -1,10 +1,9 @@
-import pandas as pd
-import numpy as np
-import pickle
-import yaml
 import json
+import pickle
 from pathlib import Path
 
+import pandas as pd
+import yaml
 
 # ============================================================
 # Pure, testable functions
@@ -154,17 +153,17 @@ def main():
     # --- Step 9: Summary stats ---
     tier_counts = scored["risk_tier"].value_counts()
     print(f"\n[OK] Scoring complete — {len(scored)} employees")
-    print(f"\nRisk tier distribution:")
+    print("\nRisk tier distribution:")
     for tier in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
         count = tier_counts.get(tier, 0)
         pct = count / len(scored) * 100
         print(f"  {tier:<10}: {count:>4} employees ({pct:.1f}%)")
 
-    print(f"\nEV summary:")
+    print("\nEV summary:")
     print(f"  Total intervention budget needed:  Rs {scored[scored['risk_tier'].isin(['CRITICAL','HIGH'])]['ev'].sum():,.0f}")
     print(f"  Avg P(attrition) CRITICAL:         {scored[scored['risk_tier']=='CRITICAL']['p_attrition'].mean():.3f}")
     print(f"  Avg survival months CRITICAL:      {scored[scored['risk_tier']=='CRITICAL']['median_survival_months'].mean():.1f}")
-    print(f"\nTop 5 highest priority employees:")
+    print("\nTop 5 highest priority employees:")
     print(scored[["employee_id", "band", "department", "p_attrition", "ev", "risk_tier"]].head())
     print(f"\nSaved to: {output_path}")
 

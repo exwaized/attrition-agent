@@ -1,8 +1,8 @@
-import pandas as pd
-import numpy as np
-from pathlib import Path
 import json
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
 
 # ============================================================
 # VALIDATION RULES
@@ -298,7 +298,7 @@ def run_validation() -> dict:
     print(f"Passed: {passed}/{total}")
 
     if blockers:
-        print(f"\nFailed checks:")
+        print("\nFailed checks:")
         for b in blockers:
             print(f"  [FAIL] {b}")
 
@@ -317,7 +317,7 @@ def run_validation() -> dict:
     with open("logs/validation_report.json", "w") as f:
         json.dump(report, f, indent=2, default=str)
 
-    print(f"Report saved: logs/validation_report.json")
+    print("Report saved: logs/validation_report.json")
 
     return report
 

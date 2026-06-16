@@ -1,15 +1,17 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+import matplotlib
+import numpy as np
+import pandas as pd
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.preprocessing import StandardScaler
-import matplotlib
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
 import json
 
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ============================================================
 # Pure, testable functions
@@ -126,14 +128,14 @@ def main():
     moderate = vif_df[(vif_df["VIF"] > 2) & (vif_df["VIF"] <= 5)]
     clean = vif_df[vif_df["VIF"] <= 2]
 
-    print(f"\nVIF Summary:")
+    print("\nVIF Summary:")
     print(f"  Critical (>10):  {len(critical)} features — MUST FIX")
     print(f"  High (5-10):     {len(high)} features — investigate")
     print(f"  Moderate (2-5):  {len(moderate)} features — acceptable")
     print(f"  Clean (<=2):     {len(clean)} features — good")
 
     if len(critical) > 0:
-        print(f"\nCritical VIF features:")
+        print("\nCritical VIF features:")
         print(critical.to_string(index=False))
 
     # ============================================================
@@ -156,7 +158,7 @@ def main():
     ) if high_corr_pairs else pd.DataFrame()
 
     if not high_corr_df.empty:
-        print(f"\nHighly correlated pairs (|r| > 0.7):")
+        print("\nHighly correlated pairs (|r| > 0.7):")
         print(high_corr_df.to_string(index=False))
     else:
         print("\nNo highly correlated pairs (|r| > 0.7)")
@@ -217,10 +219,10 @@ def main():
     print(f"Kept:   {len(kept)} features")
     print(f"Zeroed: {len(zeroed)} features")
 
-    print(f"\nTop 20 by L1 coefficient:")
+    print("\nTop 20 by L1 coefficient:")
     print(kept.head(20)[["feature", "l1_coef", "abs_coef"]].to_string(index=False))
 
-    print(f"\nZeroed features (redundant/weak):")
+    print("\nZeroed features (redundant/weak):")
     print(zeroed["feature"].tolist())
 
     # ============================================================
@@ -243,9 +245,9 @@ def main():
     print(f"\nFlagged by VIF:         {vif_flagged - interaction_terms}")
     print(f"Flagged by L1:          {l1_flagged - interaction_terms}")
     print(f"Flagged by correlation: {corr_flagged - interaction_terms}")
-    print(f"\n[OK] Recommended drops (2+ methods agree):")
+    print("\n[OK] Recommended drops (2+ methods agree):")
     print(f"   {drop_recommended}")
-    print(f"\n[WARN]  Interaction terms protected:")
+    print("\n[WARN]  Interaction terms protected:")
     print(f"   {interaction_terms}")
 
     features_after_drops = [f for f in feature_cols if f not in drop_recommended]
@@ -261,11 +263,11 @@ def main():
     with open("models/multicollinearity_report.json", "w") as f:
         json.dump(recommendations, f, indent=2)
 
-    print(f"\nReport saved: models/multicollinearity_report.json")
+    print("\nReport saved: models/multicollinearity_report.json")
     print(f"Features before: {len(feature_cols)}")
     print(f"Features after:  {len(features_after_drops)}")
-    print(f"\n[OK] Multicollinearity check complete")
-    print(f"Run python models/train.py next — it will auto-read the drop list")
+    print("\n[OK] Multicollinearity check complete")
+    print("Run python models/train.py next — it will auto-read the drop list")
 
     return recommendations
 
