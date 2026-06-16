@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]  # adjust to match your venv's version
+        python-version: ["3.14"]  # matches your local venv — requirements.txt
+        # was pip-freeze'd against it, so older Pythons can't resolve every pin
 
     steps:
       # Step 1 — pull the repo
