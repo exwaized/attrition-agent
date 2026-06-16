@@ -7,11 +7,19 @@ ASSUMPTIONS — verify these against your actual repo and adjust if wrong:
   - You're running pytest from the repo root (e.g. `pytest` or
     `pytest tests/`), not from inside tests/.
 """
+import os
 import sys
 from pathlib import Path
 
 import pytest
 import yaml
+
+# Step 0 — agents/attrition_agent.py constructs a Groq client at import
+# time, which needs SOME value for GROQ_API_KEY even if you're not
+# actually calling the LLM in a given test. setdefault() only fills
+# this in if it's genuinely unset — your real .env / exported key (if
+# present) always wins.
+os.environ.setdefault("GROQ_API_KEY", "test-placeholder-key")
 
 # Step 1 — make the repo root importable. This lets test files do
 # `from models.train import ...` or `from api.main import app` no
