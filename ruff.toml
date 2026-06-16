@@ -1,0 +1,14 @@
+# Starter ruff config — intentionally lenient. A 14-project portfolio's
+# worth of code wasn't written with a linter watching, so turning on
+# every rule on day one would produce hundreds of failures and make CI
+# noise instead of signal. Tighten this gradually:
+#   1. Get CI green with this config.
+#   2. Drop "E501" once you've done one pass on line length.
+#   3. Add "B" (bugbear) and "UP" (pyupgrade) once E/F/I are clean.
+
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I"]   # E = pycodestyle errors, F = pyflakes (real bugs), I = import sorting
+ignore = ["E501"]          # line length — re-enable after a cleanup pass
