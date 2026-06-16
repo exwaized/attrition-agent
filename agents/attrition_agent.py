@@ -17,7 +17,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import TypedDict, Optional
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=Path("E:/attrition-agent/.env"), override=True)
+load_dotenv(override=True)
 import os
 
 from groq import Groq

@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from pathlib import Path
 load_dotenv(dotenv_path=Path("E:/attrition-agent/.env"), override=True)
 import os
-print(f"KEY LOADED: {os.environ.get('GROQ_API_KEY')[:20]}...")
 
 import json
 import sqlite3

@@ -1,0 +1,64 @@
+# ============================================================
+# docker-compose.yml — Jio Attrition Intelligence System
+# Services: api (FastAPI), dashboard (Streamlit), ollama (local LLM)
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # FastAPI — serves /explain, /report/*, /score/batch etc.
+  # ----------------------------------------------------------
+  api:
+    build: .
+    container_name: attrition-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount data + config + logs so they survive rebuilds and
+      # can be swapped (real data, new config) WITHOUT rebuilding the image
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Streamlit — HR-facing dashboard (5 pages)
+  # ----------------------------------------------------------
+  dashboard:
+    build: .
+    container_name: attrition-dashboard
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml
+      - ./.env:/app/.env
+    env_file:
+      - .env
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ----------------------------------------------------------
+  # Ollama — local LLM, used instead of Groq once real employee
+  # data is in play (keeps everything on-network, nothing sent
+  # to a third-party US server)
+  # ----------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: attrition-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

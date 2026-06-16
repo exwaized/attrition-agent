@@ -1,22 +1,8 @@
-# ============================================================
-# validate.py — Post Feature Engineering Validation
-# ============================================================
-# PURPOSE: Schema + business rule validation on features.csv
-# FLOW: features.csv → checks → go/no-go for train.py
-# RUN: python data/raw/validate.py
-# CONNECTED TO: feature_engineering.py (input) → train.py (output)
-# ============================================================
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import yaml
 import json
 from datetime import datetime
-
-# --- Step 1: Load config ---
-with open("config.yaml") as f:
-    cfg = yaml.safe_load(f)
 
 # ============================================================
 # VALIDATION RULES
