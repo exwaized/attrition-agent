@@ -23,6 +23,7 @@ import importlib
 import pytest
 
 MODULES = [
+    "data.synthetic.generate",
     "data.raw.mapper",
     "data.raw.eda",
     "data.raw.validate",
@@ -32,7 +33,9 @@ MODULES = [
     "models.ev_scoring",
     "agents.attrition_agent",
     "rag.retriever",
+    "rag.build_rag",
     "api.main",
+    "run_pipeline",
 ]
 
 

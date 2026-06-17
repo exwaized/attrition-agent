@@ -9,13 +9,14 @@
 #      python run_pipeline.py --data path/to/real_data.xlsx
 # ============================================================
 
+import argparse
+import json
 import subprocess
 import sys
-import yaml
-import json
-import argparse
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import yaml
 
 # --- Load config ---
 with open("config.yaml") as f:
@@ -107,14 +108,14 @@ def run_step(step: dict, extra_args: list = None) -> dict:
 
     try:
         result = subprocess.run(
-    cmd,
-    capture_output=True,
-    text=True,
-    encoding="utf-8",
-    errors="replace",
-    timeout=600
-)
-        
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600
+        )
+
         end      = datetime.now()
         duration = (end - start).total_seconds()
 
@@ -190,7 +191,7 @@ def run_pipeline(start_from: str = None,
     run_start = datetime.now()
 
     print(f"\n{'='*60}")
-    print(f"ATTRITION INTELLIGENCE PIPELINE")
+    print("ATTRITION INTELLIGENCE PIPELINE")
     print(f"Run ID: {run_id}")
     print(f"Started: {run_start.strftime('%Y-%m-%d %H:%M:%S')}")
     if data_path:
@@ -198,6 +199,17 @@ def run_pipeline(start_from: str = None,
     if start_from:
         print(f"Resuming from: {start_from}")
     print(f"{'='*60}\n")
+
+    # Validate start_from up front rather than letting an unrecognized
+    # step ID silently fall back to "run everything" — a typo in --from
+    # should fail loudly, not quietly do the opposite of what was asked.
+    step_ids = [s["id"] for s in PIPELINE_STEPS]
+    if start_from and start_from not in step_ids:
+        raise ValueError(
+            f"Unknown step '{start_from}' for --from. "
+            f"Valid step IDs: {', '.join(step_ids)}"
+        )
+    start_idx = step_ids.index(start_from) if start_from else 0
 
     results        = []
     completed      = []
@@ -209,9 +221,6 @@ def run_pipeline(start_from: str = None,
 
         # Skip steps before start_from
         if start_from:
-            step_ids = [s["id"] for s in PIPELINE_STEPS]
-            start_idx = step_ids.index(start_from) \
-                if start_from in step_ids else 0
             current_idx = step_ids.index(step_id)
             if current_idx < start_idx:
                 print(f"⏭️  Skipping {step['name']} (before resume point)")
@@ -221,7 +230,7 @@ def run_pipeline(start_from: str = None,
         if step_id == "step8" and not rebuild_rag:
             rag_path = Path(cfg["paths"]["chroma_db"])
             if rag_path.exists():
-                print(f"⏭️  Skipping RAG build (ChromaDB exists, use --rebuild-rag to force)")
+                print("⏭️  Skipping RAG build (ChromaDB exists, use --rebuild-rag to force)")
                 continue
 
         print(f"{'─'*60}")
@@ -252,7 +261,7 @@ def run_pipeline(start_from: str = None,
             completed.append(step_id)
             save_checkpoint(completed, run_id)
         else:
-            print(f"\n  Error output:")
+            print("\n  Error output:")
             if result["stderr"]:
                 for line in result["stderr"].strip().split("\n")[-10:]:
                     print(f"  │ {line}")
@@ -260,12 +269,12 @@ def run_pipeline(start_from: str = None,
             if step["required"]:
                 pipeline_failed = True
                 failed_step     = step["name"]
-                print(f"\n[FAIL] Required step failed — stopping pipeline")
-                print(f"   Fix the error above and resume with:")
+                print("\n[FAIL] Required step failed — stopping pipeline")
+                print("   Fix the error above and resume with:")
                 print(f"   python run_pipeline.py --from {step_id}")
                 break
             else:
-                print(f"  [WARN]  Optional step failed — continuing pipeline")
+                print("  [WARN]  Optional step failed — continuing pipeline")
 
     # Pipeline summary
     run_end      = datetime.now()
@@ -275,15 +284,15 @@ def run_pipeline(start_from: str = None,
     if pipeline_failed:
         print(f"[FAIL] PIPELINE FAILED at: {failed_step}")
     else:
-        print(f"[OK] PIPELINE COMPLETE")
+        print("[OK] PIPELINE COMPLETE")
 
     print(f"Duration:  {total_seconds:.0f}s ({total_seconds/60:.1f} min)")
     print(f"Steps completed: {len(completed)}/{len(PIPELINE_STEPS)}")
 
     if not pipeline_failed:
-        print(f"\nNext steps:")
-        print(f"  Start API:       uvicorn api.main:app --reload --port 8000")
-        print(f"  Start Dashboard: streamlit run dashboard.py")
+        print("\nNext steps:")
+        print("  Start API:       uvicorn api.main:app --reload --port 8000")
+        print("  Start Dashboard: streamlit run dashboard.py")
 
     # Save full run report
     report = {
