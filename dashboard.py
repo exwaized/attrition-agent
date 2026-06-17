@@ -6,13 +6,13 @@
 # RUN: streamlit run dashboard.py
 # ============================================================
 
-import streamlit as st
-import requests
+from datetime import datetime
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import json
-from datetime import datetime
+import requests
+import streamlit as st
 
 # --- Step 1: Page config ---
 st.set_page_config(
@@ -29,14 +29,14 @@ def get_health():
     try:
         r = requests.get(f"{BASE_URL}/health", timeout=5)
         return r.json()
-    except:
+    except Exception:
         return None
 
 def get_weekly():
     try:
         r = requests.get(f"{BASE_URL}/report/weekly", timeout=10)
         return r.json()
-    except:
+    except Exception:
         return None
 
 def get_employee(emp_id):
@@ -52,21 +52,21 @@ def get_department(dept):
     try:
         r = requests.get(f"{BASE_URL}/report/department/{dept}", timeout=10)
         return r.json()
-    except:
+    except Exception:
         return None
 
 def get_budget_sim(tier):
     try:
         r = requests.get(f"{BASE_URL}/report/budget-sim?correction_type={tier}", timeout=10)
         return r.json()
-    except:
+    except Exception:
         return None
 
 def get_audit():
     try:
         r = requests.get(f"{BASE_URL}/audit/recent?limit=50", timeout=10)
         return r.json()
-    except:
+    except Exception:
         return None
 
 TIER_COLORS = {

@@ -7,17 +7,19 @@
 # MANDATORY before first real data pipeline run
 # ============================================================
 
-import pandas as pd
-import numpy as np
+import json
+import warnings
+from datetime import datetime
+from pathlib import Path
+
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 import yaml
-import json
-from pathlib import Path
-from datetime import datetime
-import warnings
+
 warnings.filterwarnings("ignore")
 
 # --- Step 1: Load config ---
@@ -624,7 +626,7 @@ def run_eda(input_filepath: str = None) -> dict:
 
     # Print summary
     print(f"\n{'='*50}")
-    print(f"EDA COMPLETE")
+    print("EDA COMPLETE")
     print(f"{'='*50}")
     print(f"Verdict:     {results['readiness']['verdict']}")
     print(f"Rows:        {results['quality']['shape']['rows']}")
@@ -635,18 +637,18 @@ def run_eda(input_filepath: str = None) -> dict:
     print(f"High-risk segments: {results['subgroups']['segments_flagged']}")
 
     if results["readiness"]["blockers"]:
-        print(f"\n[FAIL] BLOCKERS — fix before running pipeline:")
+        print("\n[FAIL] BLOCKERS — fix before running pipeline:")
         for b in results["readiness"]["blockers"]:
             print(f"  • {b}")
     else:
-        print(f"\n[OK] Data is clean — run feature_engineering.py next")
+        print("\n[OK] Data is clean — run feature_engineering.py next")
 
     if results["readiness"]["warnings"]:
-        print(f"\n[WARN]  WARNINGS:")
+        print("\n[WARN]  WARNINGS:")
         for w in results["readiness"]["warnings"]:
             print(f"  • {w}")
 
-    print(f"\nReports saved:")
+    print("\nReports saved:")
     print(f"  HTML: {report_path}")
     print(f"  JSON: {json_path}")
 

@@ -14,15 +14,17 @@
 # FLOW: raw HR file → cleaned → employees.csv (pipeline input)
 # ============================================================
 
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from rapidfuzz import fuzz, process
-import re
 import json
-import yaml
-from datetime import datetime
+import re
 import warnings
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import yaml
+from rapidfuzz import fuzz, process
+
 warnings.filterwarnings("ignore")
 
 # --- Step 1: Load config ---
@@ -320,7 +322,7 @@ def handle_nulls(df: pd.DataFrame) -> tuple:
     null_cols   = null_counts[null_counts > 0]
 
     if len(null_cols) > 0:
-        audit.append(f"Null counts before imputation:")
+        audit.append("Null counts before imputation:")
         for col, count in null_cols.items():
             pct = count / len(df) * 100
             audit.append(f"  {col}: {count} ({pct:.1f}%)")
@@ -372,6 +374,19 @@ def handle_nulls(df: pd.DataFrame) -> tuple:
 # ============================================================
 # STEP 5: Type coercion
 # ============================================================
+def clean_numeric(val):
+    """Strip currency symbols, commas, percentages from numeric strings."""
+    if pd.isnull(val):
+        return np.nan
+    s = str(val).strip()
+    s = re.sub(r"[₹$,\s]", "", s)  # remove currency + commas
+    s = s.replace("%", "")          # remove percentage sign
+    s = s.replace("−", "-")         # handle unicode minus
+    try:
+        return float(s)
+    except ValueError:
+        return np.nan
+
 def coerce_types(df: pd.DataFrame) -> tuple:
     """
     Converts columns to correct types.
@@ -383,23 +398,15 @@ def coerce_types(df: pd.DataFrame) -> tuple:
     """
     audit = []
 
-    def clean_numeric(val):
-        """Strip currency symbols, commas, percentages from numeric strings."""
-        if pd.isnull(val):
-            return np.nan
-        s = str(val).strip()
-        s = re.sub(r"[₹$,\s]", "", s)  # remove currency + commas
-        s = s.replace("%", "")          # remove percentage sign
-        s = s.replace("−", "-")         # handle unicode minus
-        try:
-            return float(s)
-        except ValueError:
-            return np.nan
-
-    # Numeric columns — clean and convert
+    # Numeric columns — clean and convert. attrition_flag is excluded
+    # even though it's typed "int" in CANONICAL_COLUMNS — it gets its
+    # own text-to-binary handling below, and running it through
+    # clean_numeric first would wipe values like "Resigned"/"Active" to
+    # NaN (float() can't parse them) before binary_maps ever sees them.
     numeric_cols = [
         col for col, meta in CANONICAL_COLUMNS.items()
         if meta["type"] in ["float", "int"] and col in df.columns
+        and col != "attrition_flag"
     ]
 
     for col in numeric_cols:
@@ -674,17 +681,17 @@ def run_mapper(input_filepath: str,
 
     # Print summary
     print(f"\n{'='*50}")
-    print(f"[OK] Mapper complete")
+    print("[OK] Mapper complete")
     print(f"Input rows:    {len(df)}")
     print(f"Output cols:   {len(df.columns)}")
     print(f"Output path:   {output_filepath}")
-    print(f"Audit trail:   logs/mapper_audit.txt")
-    print(f"Column map:    logs/column_mapping.json")
+    print("Audit trail:   logs/mapper_audit.txt")
+    print("Column map:    logs/column_mapping.json")
 
     if issues:
         print(f"\n[WARN]  {len(issues)} validation issues — check logs/mapper_audit.txt")
     else:
-        print(f"Validation:    [OK] all checks passed")
+        print("Validation:    [OK] all checks passed")
 
     return df
 
@@ -704,7 +711,7 @@ if __name__ == "__main__":
 
     df_clean = run_mapper(input_file)
 
-    print(f"\nFirst 3 rows:")
+    print("\nFirst 3 rows:")
     print(df_clean.head(3).to_string())
-    print(f"\nColumn list:")
+    print("\nColumn list:")
     print(df_clean.columns.tolist())

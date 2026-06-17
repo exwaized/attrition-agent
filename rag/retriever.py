@@ -1,35 +1,51 @@
-# ============================================================
-# retriever.py — RAG Retrieval Interface for Agent
-# ============================================================
-# PURPOSE: Given employee risk drivers, retrieves relevant
-#          policy chunks from ChromaDB for LLM context
-# FLOW: shap_drivers → query → chroma → policy chunks
-# CONNECTED TO: build_rag.py (input) → attrition_agent.py (output)
-# ============================================================
+import json
 
 import chromadb
-from sentence_transformers import SentenceTransformer
 import yaml
-from pathlib import Path
+from sentence_transformers import SentenceTransformer
 
-# --- Step 1: Load config and connect to ChromaDB ---
+# --- Step 1: Load config ---
 with open("config.yaml") as f:
     cfg = yaml.safe_load(f)
 
-# Reuse same persistent client and collection built in build_rag.py
-# If collection doesn't exist, agent will catch the error cleanly
-chroma_path = cfg["paths"]["chroma_db"]
-client      = chromadb.PersistentClient(path=chroma_path)
-collection  = client.get_collection("hr_policies")
+# Lazy-loaded singletons. The ORIGINAL version connected to ChromaDB and
+# loaded the sentence-transformers model at import time — meaning just
+# `import rag.retriever` would fail with no usable error message on any
+# machine where build_rag.py hasn't been run yet (fresh clone, CI runner,
+# a new contributor's laptop), since get_collection() raises if the
+# "hr_policies" collection doesn't exist. Loading lazily means the module
+# always imports cleanly; the actual ChromaDB/model dependency only
+# becomes a hard requirement when retrieve_policy_context is genuinely
+# called, with an error that's traceable to that specific call instead
+# of a mysterious import-time crash.
+_client = None
+_collection = None
+_embedder = None
 
-# Same embedding model as build_rag.py
-# CRITICAL: must be identical model — different model = different vector space = bad retrieval
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# --- Step 2: Feature → query mapping ---
-# Maps SHAP feature names to human-readable search queries
-# This is the bridge between ML output and NLP retrieval
-# Each feature name maps to the policy concept it relates to
+def _get_collection():
+    global _client, _collection
+    if _collection is None:
+        _client = chromadb.PersistentClient(path=cfg["paths"]["chroma_db"])
+        # Reuses the same persistent client/collection built in build_rag.py
+        _collection = _client.get_collection("hr_policies")
+    return _collection
+
+
+def _get_embedder():
+    global _embedder
+    if _embedder is None:
+        # Same embedding model as build_rag.py — CRITICAL that this stays
+        # identical. A different model means a different vector space,
+        # which means retrieval silently returns garbage, not an error.
+        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedder
+
+
+# --- Step 2: Feature -> query mapping ---
+# Maps SHAP feature names to human-readable search queries — the bridge
+# between ML output and NLP retrieval. Each feature name maps to the
+# policy concept it relates to.
 FEATURE_TO_QUERY = {
     "interact_high_performer_no_promo": "high performer no promotion 18 months escalation",
     "interact_underpaid_declining":     "salary below market compa ratio MAP correction underpaid",
@@ -45,42 +61,77 @@ FEATURE_TO_QUERY = {
     "recency_promotion":                "promotion overdue career stagnation",
 }
 
-def retrieve_policy_context(top_shap_drivers: list, n_results: int = 2) -> str:
+
+# ============================================================
+# Pure, testable functions
+# ============================================================
+
+def select_shap_queries(top_shap_drivers: list) -> list:
     """
-    Given top SHAP drivers from XGBoost explanation,
-    retrieves relevant policy chunks from ChromaDB.
-
-    Flow:
-    1. Map each SHAP feature name to a search query
-    2. Embed the query using sentence-transformers
-    3. Query ChromaDB for top matching policy chunks
-    4. Deduplicate and return as formatted context string
-
-    Returns: formatted string of policy chunks for LLM prompt
+    Filters SHAP drivers down to the ones worth retrieving policy for,
+    and maps each to a search query. Only positive-SHAP drivers
+    (pushing toward leaving) get a query — negative SHAP is a
+    protective factor, no policy action needed for it. Unmapped
+    features fall back to their name with underscores replaced.
+    Returns a list of (feature_name, query) tuples.
     """
-    retrieved_chunks = []
-    seen_ids = set()  # deduplicate across multiple queries
-
+    queries = []
     for driver in top_shap_drivers:
         feature_name = driver["feature"]
         shap_value   = driver["shap"]
 
-        # Only retrieve for features pushing toward leaving (positive SHAP)
-        # Negative SHAP = protective factor — no policy action needed
         if shap_value <= 0:
             continue
 
-        # Map feature to query — fall back to feature name if not mapped
         query = FEATURE_TO_QUERY.get(feature_name, feature_name.replace("_", " "))
+        queries.append((feature_name, query))
+    return queries
 
-        # Embed query and search ChromaDB
+
+def format_policy_context(retrieved_chunks: list) -> str:
+    """
+    Formats retrieved policy chunks into the context string injected
+    into the LLM prompt. Pure given the chunk list — the actual
+    ChromaDB query stays in retrieve_policy_context.
+    """
+    if not retrieved_chunks:
+        return "No specific policy found for these risk drivers."
+
+    context_parts = [
+        f"[Policy: {chunk['source']} | Relevant to: {chunk['feature']}]\n{chunk['content']}"
+        for chunk in retrieved_chunks
+    ]
+    return "\n\n---\n\n".join(context_parts)
+
+
+# ============================================================
+# Retrieval (needs the real ChromaDB collection + embedder)
+# ============================================================
+
+def retrieve_policy_context(top_shap_drivers: list, n_results: int = 2) -> str:
+    """
+    Given top SHAP drivers from XGBoost explanation, retrieves
+    relevant policy chunks from ChromaDB.
+
+    Flow:
+    1. select_shap_queries — map each SHAP feature to a search query
+    2. Embed each query using sentence-transformers
+    3. Query ChromaDB for top matching policy chunks
+    4. format_policy_context — dedupe and format as context string
+    """
+    collection = _get_collection()
+    embedder   = _get_embedder()
+
+    retrieved_chunks = []
+    seen_ids = set()  # deduplicate across multiple queries
+
+    for feature_name, query in select_shap_queries(top_shap_drivers):
         query_embedding = embedder.encode([query]).tolist()
         results = collection.query(
             query_embeddings=query_embedding,
             n_results=n_results
         )
 
-        # Collect unique chunks with source attribution
         for doc, meta, doc_id in zip(
             results["documents"][0],
             results["metadatas"][0],
@@ -94,26 +145,15 @@ def retrieve_policy_context(top_shap_drivers: list, n_results: int = 2) -> str:
                     "feature": feature_name
                 })
 
-    # Format as context string for LLM prompt
-    if not retrieved_chunks:
-        return "No specific policy found for these risk drivers."
-
-    context_parts = []
-    for chunk in retrieved_chunks:
-        context_parts.append(
-            f"[Policy: {chunk['source']} | Relevant to: {chunk['feature']}]\n{chunk['content']}"
-        )
-
-    return "\n\n---\n\n".join(context_parts)
+    return format_policy_context(retrieved_chunks)
 
 
 def retrieve_for_employee(employee_row: dict) -> str:
     """
-    Convenience wrapper — takes scored employee dict,
-    parses SHAP drivers JSON, returns policy context.
-    Used directly by LangGraph agent node.
+    Convenience wrapper — takes a scored employee dict, parses the
+    SHAP drivers JSON, returns policy context. Used directly by the
+    LangGraph agent node.
     """
-    import json
     try:
         shap_drivers = json.loads(employee_row["top_shap_drivers"])
         return retrieve_policy_context(shap_drivers)
